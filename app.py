@@ -21,6 +21,7 @@ from argparse import Namespace
 import train_network
 import toml
 import re
+import tempfile
 MAX_IMAGES = 150
 
 with open('models.yaml', 'r') as file:
@@ -1116,4 +1117,4 @@ with gr.Blocks(elem_id="app", theme=theme, css=css, fill_width=True) as demo:
     refresh.click(update, inputs=listeners, outputs=[train_script, train_config, dataset_folder])
 if __name__ == "__main__":
     cwd = os.path.dirname(os.path.abspath(__file__))
-    demo.launch(debug=True, show_error=True, allowed_paths=[cwd])
+    demo.launch(debug=True, show_error=True, allowed_paths=[cwd, tempfile.gettempdir()], server_name="0.0.0.0")
