@@ -302,6 +302,17 @@ def create_dataset(destination_folder, size, *inputs):
         ext = os.path.splitext(new_image_path)[-1].lower()
         if ext == '.txt':
             continue
+        
+        # Check for supported image formats
+        supported_formats = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff']
+        if ext not in supported_formats:
+            print(f"Warning: Unsupported image format '{ext}' for file {new_image_path}. Skipping.")
+            # Remove the unsupported file
+            try:
+                os.remove(new_image_path)
+            except:
+                pass
+            continue
 
         # resize the images
         resize_image(new_image_path, new_image_path, size)
@@ -402,42 +413,76 @@ def download(base_model):
     model_file = model["file"]
     repo = model["repo"]
 
+    print(f"Downloading model: {base_model} from {repo}")
+
     # download unet
     if base_model == "flux-dev" or base_model == "flux-schnell":
         unet_folder = "models/unet"
     else:
         unet_folder = f"models/unet/{repo}"
     unet_path = os.path.join(unet_folder, model_file)
+    print(f"Checking for model file at: {unet_path}")
     if not os.path.exists(unet_path):
         os.makedirs(unet_folder, exist_ok=True)
         gr.Info(f"Downloading base model: {base_model}. Please wait. (You can check the terminal for the download progress)", duration=None)
         print(f"download {base_model}")
-        hf_hub_download(repo_id=repo, local_dir=unet_folder, filename=model_file)
+        try:
+            hf_hub_download(repo_id=repo, local_dir=unet_folder, filename=model_file)
+            print(f"Successfully downloaded {model_file}")
+        except Exception as e:
+            print(f"Error downloading {model_file}: {e}")
+            raise gr.Error(f"Failed to download model {base_model}: {str(e)}")
+    else:
+        print(f"Model file already exists: {unet_path}")
 
     # download vae
     vae_folder = "models/vae"
     vae_path = os.path.join(vae_folder, "ae.sft")
+    print(f"Checking for VAE file at: {vae_path}")
     if not os.path.exists(vae_path):
         os.makedirs(vae_folder, exist_ok=True)
         gr.Info(f"Downloading vae")
         print(f"downloading ae.sft...")
-        hf_hub_download(repo_id="cocktailpeanut/xulf-dev", local_dir=vae_folder, filename="ae.sft")
+        try:
+            hf_hub_download(repo_id="cocktailpeanut/xulf-dev", local_dir=vae_folder, filename="ae.sft")
+            print(f"Successfully downloaded ae.sft")
+        except Exception as e:
+            print(f"Error downloading ae.sft: {e}")
+            raise gr.Error(f"Failed to download VAE: {str(e)}")
+    else:
+        print(f"VAE file already exists: {vae_path}")
 
     # download clip
     clip_folder = "models/clip"
     clip_l_path = os.path.join(clip_folder, "clip_l.safetensors")
+    print(f"Checking for CLIP file at: {clip_l_path}")
     if not os.path.exists(clip_l_path):
         os.makedirs(clip_folder, exist_ok=True)
         gr.Info(f"Downloading clip...")
         print(f"download clip_l.safetensors")
-        hf_hub_download(repo_id="comfyanonymous/flux_text_encoders", local_dir=clip_folder, filename="clip_l.safetensors")
+        try:
+            hf_hub_download(repo_id="comfyanonymous/flux_text_encoders", local_dir=clip_folder, filename="clip_l.safetensors")
+            print(f"Successfully downloaded clip_l.safetensors")
+        except Exception as e:
+            print(f"Error downloading clip_l.safetensors: {e}")
+            raise gr.Error(f"Failed to download CLIP: {str(e)}")
+    else:
+        print(f"CLIP file already exists: {clip_l_path}")
 
     # download t5xxl
     t5xxl_path = os.path.join(clip_folder, "t5xxl_fp16.safetensors")
+    print(f"Checking for T5XXL file at: {t5xxl_path}")
     if not os.path.exists(t5xxl_path):
         print(f"download t5xxl_fp16.safetensors")
         gr.Info(f"Downloading t5xxl...")
-        hf_hub_download(repo_id="comfyanonymous/flux_text_encoders", local_dir=clip_folder, filename="t5xxl_fp16.safetensors")
+        try:
+            hf_hub_download(repo_id="comfyanonymous/flux_text_encoders", local_dir=clip_folder, filename="t5xxl_fp16.safetensors")
+            print(f"Successfully downloaded t5xxl_fp16.safetensors")
+        except Exception as e:
+            print(f"Error downloading t5xxl_fp16.safetensors: {e}")
+            raise gr.Error(f"Failed to download T5XXL: {str(e)}")
+    else:
+        print(f"T5XXL file already exists: {t5xxl_path}")
 
 
 def resolve_path(p):
