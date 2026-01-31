@@ -12,6 +12,7 @@ import uuid
 import shutil
 import json
 import yaml
+import numpy as np
 from slugify import slugify
 from transformers import AutoProcessor, AutoModelForCausalLM
 from gradio_logsview import LogsView, LogsViewRunner
@@ -172,8 +173,32 @@ def upload_hf(base_model, lora_rows, repo_owner, repo_name, repo_visibility, hf_
     gr.Info(f"[Upload Complete] https://huggingface.co/{repo_id}", duration=None)
 
 def load_captioning(uploaded_files, concept_sentence):
-    uploaded_images = [file for file in uploaded_files if not file.endswith('.txt')]
-    txt_files = [file for file in uploaded_files if file.endswith('.txt')]
+    # Handle uploaded files - they come as file objects or paths
+    uploaded_images = []
+    txt_files = []
+    
+    for file in uploaded_files:
+        if isinstance(file, str):
+            # It's a file path
+            if file.endswith('.txt'):
+                txt_files.append(file)
+            else:
+                uploaded_images.append(file)
+        else:
+            # It's a file object - try to get the path
+            try:
+                if hasattr(file, 'name'):
+                    if file.name.endswith('.txt'):
+                        txt_files.append(file.name)
+                    else:
+                        uploaded_images.append(file.name)
+                else:
+                    # If we can't get the name, assume it's an image
+                    uploaded_images.append(file)
+            except:
+                # Fallback - assume it's an image
+                uploaded_images.append(file)
+    
     txt_files_dict = {os.path.splitext(os.path.basename(txt_file))[0]: txt_file for txt_file in txt_files}
     updates = []
     if len(uploaded_images) <= 1:
@@ -199,7 +224,16 @@ def load_captioning(uploaded_files, concept_sentence):
 
         corresponding_caption = False
         if(image_value):
-            base_name = os.path.splitext(os.path.basename(image_value))[0]
+            # Try to get base name, handling both file paths and file objects
+            try:
+                if isinstance(image_value, str):
+                    base_name = os.path.splitext(os.path.basename(image_value))[0]
+                else:
+                    # For file objects, try to get name
+                    base_name = os.path.splitext(os.path.basename(str(image_value)))[0]
+            except:
+                base_name = f"image_{i}"
+            
             if base_name in txt_files_dict:
                 with open(txt_files_dict[base_name], 'r') as file:
                     corresponding_caption = file.read()
@@ -237,8 +271,32 @@ def create_dataset(destination_folder, size, *inputs):
         os.makedirs(destination_folder)
 
     for index, image in enumerate(images):
-        # copy the images to the datasets folder
-        new_image_path = shutil.copy(image, destination_folder)
+        # Handle different image input types
+        if isinstance(image, np.ndarray):
+            # It's a numpy array from gr.Image
+            img = Image.fromarray(image)
+            # Generate a unique filename
+            new_image_path = os.path.join(destination_folder, f"image_{index}.png")
+            img.save(new_image_path)
+        elif isinstance(image, str):
+            # It's a file path
+            if os.path.exists(image):
+                # copy the images to the datasets folder
+                new_image_path = shutil.copy(image, destination_folder)
+            else:
+                print(f"Warning: Image path does not exist: {image}")
+                continue
+        else:
+            # Try to handle as file object
+            try:
+                if hasattr(image, 'name'):
+                    new_image_path = shutil.copy(image.name, destination_folder)
+                else:
+                    print(f"Warning: Unknown image type for index {index}")
+                    continue
+            except:
+                print(f"Warning: Could not process image at index {index}")
+                continue
 
         # if it's a caption text file skip the next bit
         ext = os.path.splitext(new_image_path)[-1].lower()
@@ -282,10 +340,26 @@ def run_captioning(images, concept_sentence, *captions):
     processor = AutoProcessor.from_pretrained("multimodalart/Florence-2-large-no-flash-attn", trust_remote_code=True)
 
     captions = list(captions)
-    for i, image_path in enumerate(images):
+    for i, image_input in enumerate(images):
         print(captions[i])
-        if isinstance(image_path, str):  # If image is a file path
-            image = Image.open(image_path).convert("RGB")
+        
+        # Handle different input types
+        if isinstance(image_input, np.ndarray):
+            # It's a numpy array from gr.Image
+            image = Image.fromarray(image_input).convert("RGB")
+        elif isinstance(image_input, str):  # If image is a file path
+            image = Image.open(image_input).convert("RGB")
+        else:
+            # Try to handle as file object or other type
+            try:
+                if hasattr(image_input, 'name'):
+                    image = Image.open(image_input.name).convert("RGB")
+                else:
+                    # Fallback: convert to numpy and then to PIL
+                    image = Image.fromarray(np.array(image_input)).convert("RGB")
+            except:
+                print(f"Warning: Could not process image {i}, skipping")
+                continue
 
         prompt = "<DETAILED_CAPTION>"
         inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
@@ -954,7 +1028,7 @@ with gr.Blocks(elem_id="app", theme=theme, css=css, fill_width=True) as demo:
                             locals()[f"captioning_row_{i}"] = gr.Row(visible=False)
                             with locals()[f"captioning_row_{i}"]:
                                 locals()[f"image_{i}"] = gr.Image(
-                                    type="filepath",
+                                    type="numpy",
                                     width=111,
                                     height=111,
                                     min_width=111,
